@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+
+    environment {
+        DEPLOYMENT_DATE = sh(script: 'date +%Y-%m-%d', returnStdout: true).trim()
+        GIT_CREDENTIALS = credentials('GitlabaccessID')
+    }
+
+    stages {
+        stage('Rename Folder') {
+            steps {
+                script {
+                    sh "mv project-X ${DEPLOYMENT_DATE}-project-X"
+                }
+            }
+        }
+
+        stage('Clone Repository') {
+            steps {
+                script {
+                    def cloneDir = "${BUILD_ID}-devopd/backend"
+                    dir(cloneDir) {
+                        checkout([$class: 'GitSCM',
+                              branches: [[name: 'develop']],
+                              userRemoteConfigs: [[url: 'http://142.93.214.122:8009/gitlab-instance-17feb318/project-x.git']],
+                              extensions: [[$class: 'CredentialsBinding', credentialsId: 'GitlabaccessID']]])
+                    }
+                }    
+            }
+        }
+        
+        stage('Maven Build') {
+            steps {
+                dir("${DEPLOYMENT_DATE}-project-x/devops/backend/project-x/") {
+                    sh "mvn clean package" 
+                }
+            }
+        }
+        
+         stage('Stop Tomcat') {
+            steps {
+                script {
+                    sh "${TOMCAT_DIR}/bin/shutdown.sh"
+                }
+            }
+        }
+
+        stage('Delete File') {
+            steps {
+                script {
+                    sh "rm -rf /opt/tomcat10/webapps/project-x##-0.0.1-SNAPSHOT.war"
+                }
+            }
+        }
+
+        stage('Copy Files') {
+            steps {
+                script {
+                    sh "cp /devops/backend/project-x/target/project-x##-0.0.1-SNAPSHOT.war /opt/tomcat10/webapps/"
+                }
+            }
+        }
+
+        stage('Start Tomcat') {
+            steps {
+                script {
+                    sh "${TOMCAT_DIR}/bin/startup.sh"
+                }
+            }
+        }
+    }
+}
